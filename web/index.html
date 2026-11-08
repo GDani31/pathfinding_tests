@@ -236,8 +236,15 @@
             <h3>Options</h3>
           </header>
           <div class="optional sub_options llm_options">
-            <input type="checkbox" class="llm_memory" checked>
-            <label class="option_label">Ged&auml;chtnis (besuchte Felder)</label> <br>
+            <label>Ged&auml;chtnis</label>
+            <select name="llm_memory">
+              <option value="off">Aus</option>
+              <option value="counts" selected>Z&auml;hler</option>
+              <option value="warn">Z&auml;hler + Warnung</option>
+              <option value="camefrom">Herkunft</option>
+              <option value="recent">Letzte 10 Z&uuml;ge</option>
+              <option value="history">Chat-Verlauf</option>
+            </select> <br>
             <label>Sicht</label>
             <select name="llm_view">
               <option value="0">4 Nachbarn</option>

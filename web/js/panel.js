@@ -77,7 +77,7 @@ var Panel = {
         case 'llm':
             return new LLMFinder({
                 mode: $('input[name=llm_mode]:checked').val(),
-                memory: checked('llm_memory'),
+                memory: $section.find('select[name=llm_memory]').val(),
                 thinking: checked('llm_thinking'),
                 view: parseInt($section.find('select[name=llm_view]').val(), 10) || 0,
                 temperature: number('llm_temperature', 0),

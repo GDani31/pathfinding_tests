@@ -27,6 +27,11 @@ DIRS = [("up", 0, -1, "U"), ("right", 1, 0, "R"), ("down", 0, 1, "D"), ("left", 
 STEP_SYSTEM = ("You are a robot in a grid maze. x grows to the right, y grows downwards. "
                "You cannot see the whole maze, only your direct neighbours. "
                "Reach the goal. Answer with the number of ONE option only.")
+STEP_SYSTEM_VIEW = STEP_SYSTEM.replace("only your direct neighbours", "only the area around you")
+
+MEMORY_LABELS = {"off": "aus", "counts": "Zähler", "warn": "Zähler + Warnung",
+                 "camefrom": "Herkunft", "recent": "letzte 10 Züge", "history": "Chat-Verlauf"}
+HISTORY_TURNS = 20
 
 ONESHOT_SYSTEM = ("You solve grid mazes. '#' is a wall, '.' is free, S is start, G is goal. "
                   "Moves: U (up), D (down), L (left), R (right). No diagonal moves. "
@@ -107,9 +112,13 @@ class LLM:
         self.lock = threading.Lock()
         print("Modell bereit.")
 
-    def _prompt(self, system, user, thinking=False):
-        """Baut den Chat-Text für das Modell. Gibt einen String zurück."""
-        msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    def _prompt(self, system, user, thinking=False, history=None):
+        """Baut den Chat-Text für das Modell. `history`: frühere [(Frage, Antwort)].
+        Gibt einen String zurück."""
+        msgs = [{"role": "system", "content": system}]
+        for question, answer in history or []:
+            msgs += [{"role": "user", "content": question}, {"role": "assistant", "content": answer}]
+        msgs.append({"role": "user", "content": user})
         try:
             text = self.tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
                                                 enable_thinking=thinking)
@@ -119,16 +128,16 @@ class LLM:
             text += "<think>\n"
         return text
 
-    def choose(self, system, user, n_options, temperature, thought=None):
+    def choose(self, system, user, n_options, temperature, thought=None, history=None):
         """Lässt das Modell eine Option 1..n wählen, ohne Text zu erzeugen:
         wir lesen nur die Wahrscheinlichkeiten der Ziffern-Tokens ab.
-        `thought`: optionaler Thinking-Text vor der Antwort.
+        `thought`: optionaler Thinking-Text vor der Antwort, `history`: frühere [(Frage, Antwort)].
         Gibt (gewählter Index, Liste der Wahrscheinlichkeiten) zurück."""
         torch = self.torch
         if thought is None:
-            text = self._prompt(system, user)
+            text = self._prompt(system, user, history=history)
         else:
-            text = self._prompt(system, user, thinking=True) + thought.strip() + "\n</think>\n\n"
+            text = self._prompt(system, user, True, history) + thought.strip() + "\n</think>\n\n"
         ids = self.tok(text, return_tensors="pt").to(self.device)
         with self.lock, torch.no_grad():
             logits = self.model(**ids).logits[0, -1].float()
@@ -140,12 +149,12 @@ class LLM:
             idx = int(torch.multinomial(torch.softmax(logits / temperature, dim=-1), 1))
         return idx, probs.tolist()
 
-    def stream(self, system, user, temperature, max_new_tokens, ctl, thinking=False):
+    def stream(self, system, user, temperature, max_new_tokens, ctl, thinking=False, history=None):
         """Erzeugt Text und liefert ihn Stück für Stück (Generator von Strings).
         thinking=True: erzeugt nur den Denk-Teil und stoppt bei </think>."""
         torch = self.torch
         from transformers import StoppingCriteria, StoppingCriteriaList, TextIteratorStreamer
-        ids = self.tok(self._prompt(system, user, thinking), return_tensors="pt").to(self.device)
+        ids = self.tok(self._prompt(system, user, thinking, history), return_tensors="pt").to(self.device)
         streamer = TextIteratorStreamer(self.tok, skip_prompt=True, skip_special_tokens=True, timeout=0.5)
         think_end = self.think_end_id if thinking else None
 
@@ -206,7 +215,7 @@ class MockLLM:
             scores.append((name, -(abs(gx - int(x)) + abs(gy - int(y))) - penalty))
         return scores
 
-    def choose(self, system, user, n_options, temperature, thought=None):
+    def choose(self, system, user, n_options, temperature, thought=None, history=None):
         scores = [s for _, s in self._scores(user)]
         weights = [math.exp(0.8 * (s - max(scores))) for s in scores]
         probs = [wt / sum(weights) for wt in weights]
@@ -216,7 +225,7 @@ class MockLLM:
             idx = random.choices(range(n_options), weights=[p ** (1 / temperature) for p in probs])[0]
         return idx, probs
 
-    def stream(self, system, user, temperature, max_new_tokens, ctl, thinking=False):
+    def stream(self, system, user, temperature, max_new_tokens, ctl, thinking=False, history=None):
         if thinking:
             scores = self._scores(user)
             best = max(range(len(scores)), key=lambda i: scores[i][1])
@@ -302,9 +311,11 @@ def local_map(walls, pos, end, radius, visited=()):
     return "\n".join(rows)
 
 
-def make_prompt(pos, end, options, blocked, explored=(), visits=None, thinking=False, view_map=None):
+def make_prompt(pos, end, options, blocked, explored=(), visits=None, thinking=False, view_map=None,
+                notes=(), warn=False):
     """Baut den Prompt für einen Schritt. `visits`: {Feld: Anzahl} oder None,
-    `view_map`: Text von local_map() oder None. Gibt einen String zurück."""
+    `view_map`: Text von local_map() oder None, `notes`: zusätzliche Zeilen,
+    `warn`: besuchte Optionen ausdrücklich als "besser meiden" markieren. Gibt einen String zurück."""
     (x, y), (gx, gy) = pos, end
     lines = [f"Position: ({x}, {y})",
              f"Goal: ({gx}, {gy})",
@@ -318,9 +329,12 @@ def make_prompt(pos, end, options, blocked, explored=(), visits=None, thinking=F
         lines.append("Blocked: " + ", ".join(blocked))
     if explored:
         lines.append("Already explored: " + ", ".join(explored))
+    lines += notes
     lines.append("Options:")
     for i, (name, cell) in enumerate(options, 1):
-        extra = f" [visited {visits[cell]}x]" if visits and visits.get(cell) else ""
+        extra = ""
+        if visits and visits.get(cell):
+            extra = f" [already visited {visits[cell]}x - better avoid]" if warn else f" [visited {visits[cell]}x]"
         lines.append(f"{i}: {name} -> ({cell[0]}, {cell[1]}){extra}")
     if thinking:
         lines.append("Think briefly (at most 2 short sentences), then answer with one number.")
@@ -329,20 +343,46 @@ def make_prompt(pos, end, options, blocked, explored=(), visits=None, thinking=F
     return "\n".join(lines)
 
 
-def ask_llm(llm, user, n_options, temperature, ctl, n, thinking):
+def ask_llm(llm, user, n_options, temperature, ctl, n, thinking, system=STEP_SYSTEM, history=None):
     """Fragt das LLM nach einer Option und liefert dabei "think"-Events (Generator).
     Gibt (Index, Wahrscheinlichkeiten, Thinking-Text oder None) zurück."""
     thought = None
     if thinking:
         thought = ""
-        for chunk in llm.stream(STEP_SYSTEM, user, temperature, THINK_TOKENS, ctl, thinking=True):
+        for chunk in llm.stream(system, user, temperature, THINK_TOKENS, ctl, thinking=True, history=history):
             thought += chunk
             yield {"type": "think", "n": n, "text": chunk}
-    idx, probs = llm.choose(STEP_SYSTEM, user, n_options, temperature, thought=thought)
+    idx, probs = llm.choose(system, user, n_options, temperature, thought=thought, history=history)
     return idx, probs, thought
 
 
-def step_event(n, pos, options, probs, chosen, user, ops, visits=None, **extra):
+def memory_notes(memory, path):
+    """Zusätzliche Prompt-Zeilen für die Gedächtnis-Formate "camefrom" und "recent"."""
+    names = {(dx, dy): name for name, dx, dy, _ in DIRS}
+    moves = [names[(b[0] - a[0], b[1] - a[1])] for a, b in zip(path, path[1:])]
+    if memory == "camefrom" and moves:
+        back = names[(path[-2][0] - path[-1][0], path[-2][1] - path[-1][1])]
+        return [f"You just came from {back} ({path[-2][0]}, {path[-2][1]})."]
+    if memory == "recent" and moves:
+        return [f"Your last {len(moves[-10:])} moves (oldest first): " + ", ".join(moves[-10:])]
+    return []
+
+
+def prefers_visited(options, probs, visits):
+    """Zählt Options-Paare mit verschieden oft besuchten Feldern.
+    Gibt (Paare, in denen das öfter besuchte Feld höher bewertet wurde, alle Paare) zurück."""
+    worse = pairs = 0
+    for i in range(len(options)):
+        for j in range(i + 1, len(options)):
+            vi, vj = visits.get(options[i][1], 0), visits.get(options[j][1], 0)
+            if vi != vj:
+                pairs += 1
+                more, less = (i, j) if vi > vj else (j, i)
+                worse += probs[more] > probs[less]
+    return worse, pairs
+
+
+def step_event(n, pos, options, probs, chosen, user, ops, visits=None, system=STEP_SYSTEM, turns=0, **extra):
     """Event für einen Schritt: was das LLM sah, wie es bewertete und was es wählte."""
     return {
         "type": "step", "n": n, "pos": list(pos),
@@ -350,7 +390,8 @@ def step_event(n, pos, options, probs, chosen, user, ops, visits=None, **extra):
                      "visited": (visits or {}).get(cell, 0)}
                     for i, (name, cell) in enumerate(options)],
         "chosen": chosen, "to": list(options[chosen][1]),
-        "prompt": user and f"SYSTEM:\n{STEP_SYSTEM}\n\nUSER:\n{user}",
+        "prompt": user and (f"SYSTEM:\n{system}\n\n" + (f"(+ {turns} frühere Fragen und Antworten)\n\n" if turns else "")
+                            + f"USER:\n{user}"),
         "ops": ops, **extra,
     }
 
@@ -380,12 +421,13 @@ def optimal_text(walls, start, end):
 # --------------------------------------------------------------------------- #
 def run_step(llm, walls, start, end, memory, temperature, max_steps, ctl, thinking=False, view=0):
     """Das LLM läuft Schritt für Schritt und sieht seine Nachbarfelder.
-    memory=True: der Prompt zeigt, wie oft ein Feld schon besucht wurde.
-    view > 0: zusätzlich ein Kartenausschnitt mit Radius `view`."""
+    `memory`: Gedächtnis-Format, siehe MEMORY_LABELS. `view` > 0: Kartenausschnitt mit diesem Radius."""
     pos, path = start, [list(start)]
     visits = {start: 1}
     seen = {start}
-    confidences = []
+    confidences, history = [], []
+    worse = pairs = 0
+    system = STEP_SYSTEM_VIEW if view else STEP_SYSTEM
     for n in range(1, max_steps + 1):
         if pos == end:
             break
@@ -394,28 +436,36 @@ def run_step(llm, walls, start, end, memory, temperature, max_steps, ctl, thinki
         if not options:
             break
         ops = mark_opened(options, seen)
-        shown_visits = dict(visits) if memory else None
-        view_map = local_map(walls, pos, end, view, visits if memory else ()) if view else None
-        user = make_prompt(pos, end, options, blocked, visits=shown_visits, thinking=thinking,
-                           view_map=view_map)
-        idx, probs, thought = yield from ask_llm(llm, user, len(options), temperature, ctl, n, thinking)
+        view_map = local_map(walls, pos, end, view, visits if memory != "off" else ()) if view else None
+        user = make_prompt(pos, end, options, blocked, thinking=thinking, view_map=view_map,
+                           visits=visits if memory in ("counts", "warn") else None, warn=memory == "warn",
+                           notes=memory_notes(memory, path))
+        turns = history[-HISTORY_TURNS:] if memory == "history" else None
+        idx, probs, thought = yield from ask_llm(llm, user, len(options), temperature, ctl, n, thinking,
+                                                 system, turns)
         confidences.append(probs[idx])
+        w, p = prefers_visited(options, probs, visits)
+        worse, pairs = worse + w, pairs + p
+        history.append((user, str(idx + 1)))
 
+        shown_visits = dict(visits)
         old, pos = pos, options[idx][1]
         visits[pos] = visits.get(pos, 0) + 1
         path.append(list(pos))
         ops.append(closed_op(pos))
-        yield step_event(n, old, options, probs, idx, user, ops, shown_visits, thought=thought)
+        yield step_event(n, old, options, probs, idx, user, ops, shown_visits, system,
+                         len(turns or []), thought=thought)
         if pos != end and ctl.delay:
             ctl.sleep(ctl.delay)
 
     steps = len(path) - 1
     yield {"type": "done", "operations": [], "path": path, "stats": {"lines": [
         "Modus: Schritt für Schritt" + (" + Thinking" if thinking else "") + view_text(view),
+        f"Gedächtnis: {MEMORY_LABELS[memory]}",
         f"Ziel erreicht: {'ja' if pos == end else 'NEIN'}",
         f"Schritte: {steps}  (optimal: {optimal_text(walls, start, end)})",
-        f"Felder angesehen: {len(seen) - 1}",
         f"Felder doppelt betreten: {steps + 1 - len(visits)}",
+        f"Bewertet besuchte Felder höher: {round(100 * worse / pairs) if pairs else 0}%  ({worse}/{pairs} Paare)",
         f"Unsichere Züge (&lt;60%): {sum(p < 0.6 for p in confidences)}/{len(confidences)}",
     ]}}
 
@@ -464,13 +514,15 @@ def run_bestfirst(llm, walls, start, end, max_steps, ctl, thinking=False, view=0
         else:
             view_map = local_map(walls, cell, end, view, parent) if view else None
             user = make_prompt(cell, end, options, blocked, explored, thinking=thinking, view_map=view_map)
-            _, probs, thought = yield from ask_llm(llm, user, len(options), 0, ctl, n, thinking)
+            _, probs, thought = yield from ask_llm(llm, user, len(options), 0, ctl, n, thinking,
+                                                   STEP_SYSTEM_VIEW if view else STEP_SYSTEM)
             calls += 1
             confidences.append(max(probs))
         for (name, c), p in zip(options, probs):
             heapq.heappush(frontier, (-p, -next(order), c, cell, name))
         best = probs.index(max(probs))
         yield step_event(n, cell, options, probs, best, user, ops,
+                         system=STEP_SYSTEM_VIEW if view else STEP_SYSTEM,
                          at=list(cell), forced=len(options) == 1, thought=thought)
         if ctl.delay:
             ctl.sleep(ctl.delay)
@@ -639,7 +691,10 @@ class Handler(SimpleHTTPRequestHandler):
             events = run_bestfirst(self.llm, walls, start, end, max_steps, ctl, thinking, view)
         else:
             mode = "step"
-            events = run_step(self.llm, walls, start, end, bool(req.get("memory", True)),
+            memory = req.get("memory", "counts")
+            if memory is True or memory not in MEMORY_LABELS:
+                memory = "counts" if memory is True else "off"
+            events = run_step(self.llm, walls, start, end, memory,
                               temperature, max_steps, ctl, thinking, view)
 
         self.send_response(200)
