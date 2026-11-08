@@ -156,21 +156,34 @@ var View = {
         if (this.path) { this.path.remove(); }
     },
 
-    /** Gelber Kreis an der Stelle, an der das LLM gerade ist. */
-    setLLMPos: function(gridX, gridY) {
+    /**
+     * Gelber Kreis an der Stelle, an der das LLM gerade ist.
+     * @param {number} [view]  Sichtradius; > 0 zeichnet das Sichtfeld als Rahmen
+     */
+    setLLMPos: function(gridX, gridY, view) {
         var size = this.nodeSize,
             cx = gridX * size + size / 2,
             cy = gridY * size + size / 2;
         if (!this.llmMarker) {
+            this.llmView = this.paper.rect(0, 0, 0, 0)
+                .attr({ stroke: '#f80', 'stroke-width': 3, 'stroke-dasharray': '- ' });
             this.llmMarker = this.paper.circle(cx, cy, size * 0.28)
                 .attr({ fill: '#ff0', stroke: '#333', 'stroke-width': 2 });
-        } else {
-            this.llmMarker.attr({ cx: cx, cy: cy });
         }
-        this.llmMarker.toFront().show();
+        this.llmMarker.attr({ cx: cx, cy: cy }).toFront().show();
+        if (view > 0) {
+            this.llmView.attr({ x: (gridX - view) * size, y: (gridY - view) * size,
+                                width: (2 * view + 1) * size, height: (2 * view + 1) * size })
+                .toFront().show();
+        } else {
+            this.llmView.hide();
+        }
     },
     clearLLMPos: function() {
-        if (this.llmMarker) { this.llmMarker.hide(); }
+        if (this.llmMarker) {
+            this.llmMarker.hide();
+            this.llmView.hide();
+        }
     },
 
     /** @return {Array} [gridX, gridY] für eine Pixel-Position */

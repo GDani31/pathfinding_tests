@@ -26,6 +26,7 @@
     <script type="text/javascript" src="./js/view.js"></script>
     <script type="text/javascript" src="./js/controller.js"></script>
     <script type="text/javascript" src="./js/panel.js"></script>
+    <script type="text/javascript" src="./js/maze.js"></script>
     <script type="text/javascript" src="./js/main.js"></script>
   </head>
   <body>
@@ -237,6 +238,13 @@
           <div class="optional sub_options llm_options">
             <input type="checkbox" class="llm_memory" checked>
             <label class="option_label">Ged&auml;chtnis (besuchte Felder)</label> <br>
+            <label>Sicht</label>
+            <select name="llm_view">
+              <option value="0">4 Nachbarn</option>
+              <option value="1">3&times;3</option>
+              <option value="2">5&times;5 (25 Felder)</option>
+              <option value="3">7&times;7</option>
+            </select> <br>
             <input type="checkbox" class="llm_thinking">
             <label class="option_label">Thinking anzeigen (langsam)</label> <br>
             <label>Temp.</label>
@@ -253,6 +261,8 @@
       <button id="button1" class="control_button">Start Search</button>
       <button id="button2" class="control_button">Pause Search</button>
       <button id="button3" class="control_button">Clear Walls</button>
+      <button id="button_maze" class="maze_button">Labyrinth</button>
+      <button id="button_random" class="maze_button">Zuf&auml;llige W&auml;nde</button>
     </div>
 
     <div id="llm_log_panel" class="panel right_panel" style="display:none">

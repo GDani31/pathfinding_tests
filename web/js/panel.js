@@ -79,6 +79,7 @@ var Panel = {
                 mode: $('input[name=llm_mode]:checked').val(),
                 memory: checked('llm_memory'),
                 thinking: checked('llm_thinking'),
+                view: parseInt($section.find('select[name=llm_view]').val(), 10) || 0,
                 temperature: number('llm_temperature', 0),
                 maxSteps: Math.floor(number('llm_max_steps', 300)) || 300
             });

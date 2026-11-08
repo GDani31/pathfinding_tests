@@ -147,7 +147,6 @@ footer {
     display: flex;
     flex-direction: column;
     padding: 15px 20px;
-    min-height: 90px;
 }
 
 .llm_controls {
@@ -272,3 +271,22 @@ footer {
 
 .llm_entry.llm_jump { color: #f9a; font-weight: bold; }
 .llm_entry.llm_forced    { opacity: 0.6; }
+
+#llm_section .sub_options {
+    line-height: 1.25;
+}
+
+#play_panel {
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+.maze_button {
+    width: 45%;
+    height: 36px;
+    margin-top: 8px;
+}
+
+#play_panel button {
+    vertical-align: top;
+}

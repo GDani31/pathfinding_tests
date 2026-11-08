@@ -6,5 +6,6 @@ $(document).ready(function() {
         event.preventDefault();
     });
     Panel.init();
+    Maze.init();
     Controller.init();
 });

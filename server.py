@@ -280,13 +280,40 @@ def shortest_path_len(walls, start, end):
     return None
 
 
-def make_prompt(pos, end, options, blocked, explored=(), visits=None, thinking=False):
-    """Baut den Prompt für einen Schritt. `visits`: {Feld: Anzahl} oder None. Gibt einen String zurück."""
+def local_map(walls, pos, end, radius, visited=()):
+    """Ausschnitt der Karte um `pos` mit (2*radius+1)² Feldern, wie ein Faltungs-Kern.
+    Gibt die Zeilen als Text zurück: X du, G Ziel, # Wand/Rand, + besucht, . frei."""
+    h, w = len(walls), len(walls[0])
+    rows = []
+    for y in range(pos[1] - radius, pos[1] + radius + 1):
+        row = []
+        for x in range(pos[0] - radius, pos[0] + radius + 1):
+            if (x, y) == pos:
+                row.append("X")
+            elif (x, y) == end:
+                row.append("G")
+            elif not (0 <= x < w and 0 <= y < h) or walls[y][x]:
+                row.append("#")
+            elif (x, y) in visited:
+                row.append("+")
+            else:
+                row.append(".")
+        rows.append(" ".join(row))
+    return "\n".join(rows)
+
+
+def make_prompt(pos, end, options, blocked, explored=(), visits=None, thinking=False, view_map=None):
+    """Baut den Prompt für einen Schritt. `visits`: {Feld: Anzahl} oder None,
+    `view_map`: Text von local_map() oder None. Gibt einen String zurück."""
     (x, y), (gx, gy) = pos, end
     lines = [f"Position: ({x}, {y})",
              f"Goal: ({gx}, {gy})",
              f"The goal is {abs(gx - x)} {'right' if gx >= x else 'left'} and "
              f"{abs(gy - y)} {'down' if gy >= y else 'up'} from you."]
+    if view_map:
+        size = view_map.count("\n") + 1
+        lines += [f"Your view ({size}x{size}, up is north). X = you, G = goal, "
+                  "# = wall or outside, + = already visited, . = free:", view_map]
     if blocked:
         lines.append("Blocked: " + ", ".join(blocked))
     if explored:
@@ -337,6 +364,11 @@ def path_to(parent, end):
     return path[::-1]
 
 
+def view_text(view):
+    """Gibt z. B. ", Sicht 5×5" zurück, oder "" für nur 4 Nachbarn."""
+    return f", Sicht {2 * view + 1}×{2 * view + 1}" if view else ""
+
+
 def optimal_text(walls, start, end):
     """Gibt die optimale Weglänge als Text zurück."""
     optimal = shortest_path_len(walls, start, end)
@@ -346,9 +378,10 @@ def optimal_text(walls, start, end):
 # --------------------------------------------------------------------------- #
 #  Modi: Generatoren, die Events liefern, zuletzt ein "done"-Event
 # --------------------------------------------------------------------------- #
-def run_step(llm, walls, start, end, memory, temperature, max_steps, ctl, thinking=False):
-    """Das LLM läuft Schritt für Schritt und sieht nur seine Nachbarfelder.
-    memory=True: der Prompt zeigt, wie oft ein Feld schon besucht wurde."""
+def run_step(llm, walls, start, end, memory, temperature, max_steps, ctl, thinking=False, view=0):
+    """Das LLM läuft Schritt für Schritt und sieht seine Nachbarfelder.
+    memory=True: der Prompt zeigt, wie oft ein Feld schon besucht wurde.
+    view > 0: zusätzlich ein Kartenausschnitt mit Radius `view`."""
     pos, path = start, [list(start)]
     visits = {start: 1}
     seen = {start}
@@ -362,7 +395,9 @@ def run_step(llm, walls, start, end, memory, temperature, max_steps, ctl, thinki
             break
         ops = mark_opened(options, seen)
         shown_visits = dict(visits) if memory else None
-        user = make_prompt(pos, end, options, blocked, visits=shown_visits, thinking=thinking)
+        view_map = local_map(walls, pos, end, view, visits if memory else ()) if view else None
+        user = make_prompt(pos, end, options, blocked, visits=shown_visits, thinking=thinking,
+                           view_map=view_map)
         idx, probs, thought = yield from ask_llm(llm, user, len(options), temperature, ctl, n, thinking)
         confidences.append(probs[idx])
 
@@ -376,7 +411,7 @@ def run_step(llm, walls, start, end, memory, temperature, max_steps, ctl, thinki
 
     steps = len(path) - 1
     yield {"type": "done", "operations": [], "path": path, "stats": {"lines": [
-        "Modus: Schritt für Schritt" + (" + Thinking" if thinking else ""),
+        "Modus: Schritt für Schritt" + (" + Thinking" if thinking else "") + view_text(view),
         f"Ziel erreicht: {'ja' if pos == end else 'NEIN'}",
         f"Schritte: {steps}  (optimal: {optimal_text(walls, start, end)})",
         f"Felder angesehen: {len(seen) - 1}",
@@ -385,11 +420,11 @@ def run_step(llm, walls, start, end, memory, temperature, max_steps, ctl, thinki
     ]}}
 
 
-def run_bestfirst(llm, walls, start, end, max_steps, ctl, thinking=False):
+def run_bestfirst(llm, walls, start, end, max_steps, ctl, thinking=False, view=0):
     """Best-First-Suche mit dem LLM als Heuristik: das LLM bewertet die Nachbarn
     eines Felds, erkundet wird immer die offene Option mit der höchsten
     Wahrscheinlichkeit, auch wenn sie woanders liegt (Rücksprung).
-    `max_steps` begrenzt die Zahl der LLM-Aufrufe."""
+    `max_steps` begrenzt die Zahl der LLM-Aufrufe, `view` ist der Sichtradius."""
     order = itertools.count()
     frontier = [(-1.0, 0, start, None, None)]   # (-Wahrscheinlichkeit, -Reihenfolge, Feld, Vorgänger, Richtung)
     parent, seen = {}, {start}
@@ -427,7 +462,8 @@ def run_bestfirst(llm, walls, start, end, max_steps, ctl, thinking=False):
             probs, thought, user = [1.0], None, None
             forced += 1
         else:
-            user = make_prompt(cell, end, options, blocked, explored, thinking=thinking)
+            view_map = local_map(walls, cell, end, view, parent) if view else None
+            user = make_prompt(cell, end, options, blocked, explored, thinking=thinking, view_map=view_map)
             _, probs, thought = yield from ask_llm(llm, user, len(options), 0, ctl, n, thinking)
             calls += 1
             confidences.append(max(probs))
@@ -442,7 +478,7 @@ def run_bestfirst(llm, walls, start, end, max_steps, ctl, thinking=False):
     path = path_to(parent, end) if reached else []
     limit_hit = "  – Limit erreicht" if calls >= max_steps and not reached else ""
     yield {"type": "done", "operations": [], "path": path, "stats": {"lines": [
-        "Modus: LLM-Best-First" + (" + Thinking" if thinking else ""),
+        "Modus: LLM-Best-First" + (" + Thinking" if thinking else "") + view_text(view),
         f"Ziel erreicht: {'ja' if reached else 'NEIN'}",
         f"Weglänge: {max(len(path) - 1, 0)}  (optimal: {optimal_text(walls, start, end)})",
         f"Felder erkundet: {len(parent)}",
@@ -596,14 +632,15 @@ class Handler(SimpleHTTPRequestHandler):
             RUNS[run_id] = ctl
 
         mode, thinking = req.get("mode"), bool(req.get("thinking"))
+        view = max(0, min(int(req.get("view") or 0), 3))
         if mode == "oneshot":
             events = run_oneshot(self.llm, walls, start, end, temperature, max_steps, ctl)
         elif mode == "bestfirst":
-            events = run_bestfirst(self.llm, walls, start, end, max_steps, ctl, thinking)
+            events = run_bestfirst(self.llm, walls, start, end, max_steps, ctl, thinking, view)
         else:
             mode = "step"
             events = run_step(self.llm, walls, start, end, bool(req.get("memory", True)),
-                              temperature, max_steps, ctl, thinking)
+                              temperature, max_steps, ctl, thinking, view)
 
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")

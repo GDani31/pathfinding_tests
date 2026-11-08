@@ -61,6 +61,7 @@ $.extend(Controller, {
             return;
         }
         this.llmStats = null;
+        this.operations = [];
         this.path = finder.findPath(this.startX, this.startY, this.endX, this.endY, grid);
         this.operationCount = this.operations.length;
         this.timeSpent = (performance.now() - timeStart).toFixed(4);
@@ -82,7 +83,7 @@ $.extend(Controller, {
         LLMLog.clear();
         LLMLog.show(true);
         LLMLog.status('LLM denkt nach …');
-        View.setLLMPos(this.startX, this.startY);
+        View.setLLMPos(this.startX, this.startY, finder.opt.view);
 
         var complete = function(res) {
             if (!self.is('searching')) {   // pausiert: beim Fortsetzen abschließen
@@ -112,7 +113,7 @@ $.extend(Controller, {
             });
             opCount += (ev.ops || []).length;
             if (at) {
-                View.setLLMPos(at[0], at[1]);
+                View.setLLMPos(at[0], at[1], finder.opt.view);
                 LLMLog.status('Schritt ' + ev.n);
             } else if (ev.type === 'token') {
                 LLMLog.status('LLM schreibt …');
@@ -200,12 +201,14 @@ $.extend(Controller, {
     },
 
     onready: function() {
+        Maze.setEnabled(true);
         this.setButtonStates(
             { id: 1, text: 'Start Search', enabled: true, callback: $.proxy(this.start, this) },
             { id: 2, text: 'Pause Search', enabled: false },
             { id: 3, text: 'Clear Walls', enabled: true, callback: $.proxy(this.reset, this) });
     },
     onstarting: function(event, from, to) {
+        Maze.setEnabled(false);
         this.clearFootprints();
         this.setButtonStates({ id: 2, enabled: true });
         this.search();
@@ -221,11 +224,13 @@ $.extend(Controller, {
             { id: 2, text: 'Cancel Search', enabled: true, callback: $.proxy(this.cancel, this) });
     },
     onfinished: function() {
+        Maze.setEnabled(true);
         this.setButtonStates(
             { id: 1, text: 'Restart Search', enabled: true, callback: $.proxy(this.restart, this) },
             { id: 2, text: 'Clear Path', enabled: true, callback: $.proxy(this.clear, this) });
     },
     onmodified: function() {
+        Maze.setEnabled(true);
         this.setButtonStates(
             { id: 1, text: 'Start Search', enabled: true, callback: $.proxy(this.start, this) },
             { id: 2, text: 'Clear Path', enabled: true, callback: $.proxy(this.clear, this) });

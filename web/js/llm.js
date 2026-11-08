@@ -23,7 +23,7 @@ var LLMConfig = (function() {
 
 /**
  * Ein "Finder", der die Suche an server.py schickt und das Ergebnis streamt.
- * @param {Object} opt  { mode, memory, thinking, temperature, maxSteps }
+ * @param {Object} opt  { mode, memory, thinking, view, temperature, maxSteps }
  */
 function LLMFinder(opt) {
     this.opt = opt;
@@ -87,6 +87,7 @@ LLMFinder.prototype.run = function(sx, sy, ex, ey, grid, cb) {
         body: JSON.stringify({
             run: this.runId, walls: walls, start: [sx, sy], end: [ex, ey],
             mode: this.opt.mode, memory: this.opt.memory, thinking: this.opt.thinking,
+            view: this.opt.mode === 'oneshot' ? 0 : this.opt.view,
             temperature: this.opt.temperature, max_steps: this.opt.maxSteps,
             delay_ms: LLMLog.delay()
         })
