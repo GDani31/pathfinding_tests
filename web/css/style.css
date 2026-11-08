@@ -1,0 +1,274 @@
+body {
+    padding: 0px;
+    margin: 0px;
+    overflow: hidden;
+}
+
+input {
+    cursor: pointer;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    margin: 0px;
+    padding: 0px;
+    font-weight: normal;
+}
+
+.header_title {
+    font-size: 120%;
+    font-weight: bold;
+    padding-bottom: 5px;
+    margin-top: -10px;
+}
+
+
+.panel {
+    position: fixed;
+    padding: 20px;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    border-radius: 8px;
+    box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.5);
+    cursor: default;
+}
+
+.right_panel {
+    width: 250px;
+    right: 20px;
+}
+
+#algorithm_panel {
+    right: 20px;
+    top: 20px;
+}
+
+#instructions_panel {
+    top: 20px;
+    left: 20px;
+    width: 550px;
+}
+
+#hide_instructions {
+    position: absolute;
+    right: 25px;
+    top: 10px;
+    font-size: 90%;
+    cursor: pointer;
+}
+
+#hide_instruction:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.option_header {
+    font-size: 80%;
+    margin-left: 20px;
+}
+
+.option_label {
+    cursor: pointer;
+}
+
+button {
+    border: none;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 5px;
+    font-size: 90%;
+    cursor: pointer;
+    padding: 2px 8px;
+    margin: 0 2%;
+    width: 28%;
+}
+
+button:hover {
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.finder_section {
+    border: solid 1px #ddd;
+    border-radius: 5px;
+    margin: 5px;
+}
+
+.sub_options {
+    padding: 2px;
+    font-size: 14px;
+    margin: 2px 30px 0;
+}
+
+#stats {
+    position: fixed;
+    bottom: 40px;
+    left: 35px;
+    color: #0a0;
+    font-size: 85%;
+    padding: 5px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 5px;
+}
+
+a {
+    color: #33f;
+}
+
+footer {
+    color: #333;
+    font-size: 70%;
+    text-align: center;
+    position: fixed;
+    width: 200px;
+    bottom: 10px;
+    left: 50%;
+    margin-left: -100px;
+    background: rgba(255, 255, 255, 0.5);
+    padding: 5px;
+    border-radius: 5px;
+}
+
+.white {
+    color: #fff;
+}
+
+.green {
+    color: #0d0;
+}
+
+.red {
+    color: #ff9166;
+}
+
+.spinner {
+    width: 2em;
+}
+
+/* ---- LLM-Log ---------------------------------------------------------- */
+#llm_log_panel {
+    display: flex;
+    flex-direction: column;
+    padding: 15px 20px;
+    min-height: 90px;
+}
+
+.llm_controls {
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+
+#llm_speed {
+    width: 120px;
+    vertical-align: middle;
+}
+
+#llm_prompt {
+    flex: 0 1 auto;
+    max-height: 40%;
+    overflow: auto;
+    margin: 0 0 6px;
+    padding: 5px;
+    font-size: 11px;
+    white-space: pre-wrap;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 4px;
+    color: #ddd;
+}
+
+#llm_log {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    font-family: Consolas, Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.llm_entry {
+    padding: 0 3px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.llm_entry:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.llm_entry b {
+    color: #9f9;
+}
+
+.llm_entry i {
+    color: #fc8;
+    font-style: normal;
+}
+
+.llm_entry.llm_unsure {
+    background: rgba(255, 140, 0, 0.35);
+}
+
+.llm_entry.llm_unsure b {
+    color: #ffd27f;
+}
+
+.llm_think {
+    display: none;
+    color: #aac;
+    font-style: italic;
+    white-space: pre-wrap;
+    border-left: 2px solid #557;
+    padding-left: 5px;
+    margin: 2px 0;
+}
+
+.llm_tokens {
+    margin: 2px 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #9f9;
+}
+
+.llm_note.llm_head   { color: #8cf; margin-top: 4px; }
+.llm_note.llm_result { color: #fff; }
+.llm_note.llm_error  { color: #f88; font-weight: bold; }
+
+/* kompaktere rechte Spalte, damit das LLM-Log Platz hat */
+#algorithm_panel {
+    padding-bottom: 12px;
+}
+
+#algorithm_panel .ui-accordion .ui-accordion-header {
+    font-size: 14px;
+    line-height: 1.3;
+}
+
+#algorithm_panel .ui-accordion .ui-accordion-header a {
+    padding-top: 2px;
+    padding-bottom: 2px;
+}
+
+#algorithm_panel .option_header {
+    font-size: 13px;
+}
+
+#algorithm_panel .ui-accordion .ui-accordion-content {
+    padding: 0.6em 0.8em;
+}
+
+.sub_options.llm_options {
+    margin: 2px 0 4px 10px;
+    font-size: 13px;
+}
+
+#llm_status {
+    font-size: 12px;
+    color: #ff0;
+    min-height: 1em;
+    margin-bottom: 4px;
+}
+
+#llm_status.error {
+    color: #f88;
+    font-weight: bold;
+}
+
+.llm_entry.llm_jump { color: #f9a; font-weight: bold; }
+.llm_entry.llm_forced    { opacity: 0.6; }
