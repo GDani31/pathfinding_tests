@@ -140,7 +140,7 @@ class LLM:
             text = self._prompt(system, user, True, history) + thought.strip() + "\n</think>\n\n"
         ids = self.tok(text, return_tensors="pt").to(self.device)
         with self.lock, torch.no_grad():
-            logits = self.model(**ids).logits[0, -1].float()
+            logits = self.model(**ids, logits_to_keep=1).logits[0, -1].float()   # nur die letzte Position
         logits = logits[self.digit_ids[:n_options]]
         probs = torch.softmax(logits, dim=-1)
         if temperature <= 0:
